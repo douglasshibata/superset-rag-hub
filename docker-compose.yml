@@ -1,0 +1,49 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: superset-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-admin_password_change_me}
+      POSTGRES_DB: ${POSTGRES_DB:-paperless}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./sql/00_init_superset_db.sql:/docker-entrypoint-initdb.d/00_init_superset_db.sql
+      - ./sql/01_init_rag_telemetry.sql:/docker-entrypoint-initdb.d/01_init.sql
+      - ./sql/02_views_for_superset.sql:/docker-entrypoint-initdb.d/02_views.sql
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-admin} -d ${POSTGRES_DB:-paperless}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  superset:
+    build:
+      context: ./docker/superset
+      dockerfile: Dockerfile
+    container_name: superset-web
+    ports:
+      - "${SUPERSET_PORT:-8088}:8088"
+    environment:
+      SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY:-chavedemutaparasuperset123_change_in_prod}
+      SUPERSET_DATABASE_URI: postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-admin_password_change_me}@postgres:5432/superset_metadata
+      SUPERSET_ADMIN_USER: ${SUPERSET_ADMIN_USER:-admin}
+      SUPERSET_ADMIN_PASSWORD: ${SUPERSET_ADMIN_PASSWORD:-admin_secure_password_change_me}
+      SUPERSET_ADMIN_EMAIL: ${SUPERSET_ADMIN_EMAIL:-admin@company.com}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: superset-qdrant
+    ports:
+      - "${QDRANT_PORT:-6333}:6333"
+    restart: unless-stopped
+
+volumes:
+  pgdata:
